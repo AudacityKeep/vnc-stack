@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Email yourself the link each time you run `vnc start`.
+# Setup: sudo apt install msmtp ; copy msmtprc.example to ~/.msmtprc and fill it in (chmod 600).
+#        cp ~/.config/vnc-stack/notify.d.examples/email.sh.example ~/.config/vnc-stack/notify.d/email.sh
+#        chmod +x ~/.config/vnc-stack/notify.d/email.sh   (and set TO below)
+TO="you@example.com"
+URL="$1"
+{
+    echo "To: $TO"
+    echo "Subject: Remote access is live"
+    echo "MIME-Version: 1.0"
+    echo "Content-Type: text/html; charset=UTF-8"
+    echo ""
+    echo "<p><a href=\"$URL\">Open the menu</a></p>"
+} | msmtp "$TO"

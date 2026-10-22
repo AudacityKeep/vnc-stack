@@ -1,0 +1,9 @@
+# never commit secrets or machine-specific state
+credentials
+vnc_pass
+.msmtprc
+msmtprc
+*.log
+*.pid
+notify.d/
+*.pem

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{HOSTNAME}}</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;min-height:100vh;margin:0;align-items:center;justify-content:center}
+  .box{display:flex;flex-direction:column;gap:16px;width:min(320px,90vw)}
+  a{display:block;padding:20px;border-radius:12px;background:#222;color:#eee;text-decoration:none;text-align:center;font-size:20px;border:1px solid #444}
+  a:active,a:hover{background:#333}
+  small{display:block;color:#888;font-size:14px;margin-top:4px}
+</style>
+</head>
+<body>
+<div class="box">
+  <a href="/vnc.html">Remote Desktop<small>noVNC</small></a>
+  <a href="/ttyd/">Terminal<small>ttyd</small></a>
+</div>
+</body>
+</html>

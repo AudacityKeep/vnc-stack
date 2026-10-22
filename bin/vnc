@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# vnc - start/stop the remote-desktop tunnel and manage logins (part of vnc-stack)
+# Runs as your normal user. sudo is only used to start nginx/ttyd or rotate the web password.
+
+CONF="$HOME/.config/vnc-stack"
+STATE="$HOME/.cache/vnc-stack"
+NOVNC_DIR="/usr/share/novnc"
+mkdir -p "$STATE" "$CONF/notify.d"
+
+running()  { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+vnc_open() { (exec 3<>/dev/tcp/127.0.0.1/5900) 2>/dev/null; }
+tunnel_url() {
+    grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' "$STATE/cloudflared.log" 2>/dev/null \
+        | grep -v '^https://api\.' | head -1
+}
+stop_pid() {  # stop_pid <pidfile> <label>
+    if running "$1"; then kill "$(cat "$1")" 2>/dev/null; echo "Stopped $2."; fi
+    rm -f "$1"
+}
+
+cmd_start() {
+    if running "$STATE/cloudflared.pid"; then
+        echo "Already running."; cmd_url; return 0
+    fi
+
+    for s in nginx ttyd; do
+        if ! systemctl is-active --quiet "$s"; then
+            echo "Starting $s (sudo needed)..."
+            sudo systemctl start "$s" || { echo "Could not start $s."; return 1; }
+        fi
+    done
+
+    if ! vnc_open; then
+        echo "WARNING: nothing is listening on 127.0.0.1:5900 (TightVNC)."
+        echo "         Check that TightVNC is running on Windows and that .wslconfig has"
+        echo "         networkingMode=mirrored (then run 'wsl --shutdown' from Windows)."
+    fi
+
+    if ! running "$STATE/websockify.pid"; then
+        echo "Starting websockify..."
+        nohup websockify --web "$NOVNC_DIR" 127.0.0.1:6080 127.0.0.1:5900 \
+            >"$STATE/websockify.log" 2>&1 &
+        echo $! >"$STATE/websockify.pid"
+    fi
+
+    echo "Starting Cloudflare tunnel..."
+    : >"$STATE/cloudflared.log"
+    nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8080 \
+        >"$STATE/cloudflared.log" 2>&1 &
+    echo $! >"$STATE/cloudflared.pid"
+
+    URL=""
+    for _ in $(seq 1 30); do
+        URL=$(tunnel_url)
+        [ -n "$URL" ] && break
+        running "$STATE/cloudflared.pid" || break
+        sleep 1
+    done
+
+    if [ -z "$URL" ]; then
+        echo "No tunnel URL after 30s. See $STATE/cloudflared.log"
+        return 1
+    fi
+    echo "$URL" >"$STATE/url"
+
+    echo ""
+    echo "=========================================="
+    echo "Menu: $URL"
+    echo "=========================================="
+    echo "(If the page shows Cloudflare error 1016, wait ~15 seconds and refresh.)"
+
+    for h in "$CONF"/notify.d/*; do
+        [ -f "$h" ] && [ -x "$h" ] || continue
+        "$h" "$URL" || echo "Notify hook failed: $(basename "$h")"
+    done
+}
+
+cmd_stop() {
+    stop_pid "$STATE/cloudflared.pid" "tunnel"
+    stop_pid "$STATE/websockify.pid" "websockify"
+    rm -f "$STATE/url"
+    echo "Remote access is off. (nginx and ttyd keep running on loopback only.)"
+}
+
+cmd_status() {
+    if running "$STATE/cloudflared.pid"; then
+        echo "tunnel:     running  $(cat "$STATE/url" 2>/dev/null)"
+    else
+        echo "tunnel:     stopped"
+    fi
+    if running "$STATE/websockify.pid"; then echo "websockify: running"; else echo "websockify: stopped"; fi
+    for s in nginx ttyd; do
+        printf '%-11s %s\n' "$s:" "$(systemctl is-active "$s" 2>/dev/null)"
+    done
+    if vnc_open; then
+        echo "TightVNC:   reachable on 127.0.0.1:5900"
+    else
+        echo "TightVNC:   NOT reachable on 127.0.0.1:5900"
+    fi
+}
+
+cmd_url() {
+    if running "$STATE/cloudflared.pid" && [ -s "$STATE/url" ]; then
+        cat "$STATE/url"
+    else
+        echo "Not running. Use: vnc start"; return 1
+    fi
+}
+
+cmd_creds() {
+    [ -f "$CONF/credentials" ] || { echo "No credentials found. Run setup.sh first."; return 1; }
+    . "$CONF/credentials"
+    echo "Web login (first prompt):"
+    echo "  user:     $WEB_USER"
+    echo "  password: $WEB_PASS"
+    if [ -f "$CONF/vnc_pass" ]; then
+        echo "VNC password (second prompt, after the desktop page loads):"
+        echo "  $(cat "$CONF/vnc_pass")"
+    fi
+}
+
+cmd_passwd() {
+    [ -f "$CONF/credentials" ] || { echo "No credentials found. Run setup.sh first."; return 1; }
+    . "$CONF/credentials"
+    local new
+    new=$(openssl rand -hex 16)
+    printf '%s\n' "$new" | sudo htpasswd -i /etc/nginx/.htpasswd "$WEB_USER" >/dev/null || return 1
+    sudo sed -i "s#-c [^ ]*#-c ${WEB_USER}:${new}#" /etc/default/ttyd || return 1
+    sudo systemctl restart ttyd || return 1
+    printf 'WEB_USER=%s\nWEB_PASS=%s\n' "$WEB_USER" "$new" >"$CONF/credentials"
+    chmod 600 "$CONF/credentials"
+    echo "New web password set. Show it with: vnc creds"
+}
+
+usage() {
+    cat <<USAGE
+usage: vnc <command>
+
+  start     start the tunnel and print the link
+  stop      turn remote access off
+  status    what is running
+  url       print the current link
+  creds     show your logins
+  passwd    generate a new web password
+USAGE
+}
+
+case "${1:-}" in
+    start)   cmd_start ;;
+    stop)    cmd_stop ;;
+    status)  cmd_status ;;
+    url)     cmd_url ;;
+    creds)   cmd_creds ;;
+    passwd)  cmd_passwd ;;
+    ""|-h|--help|help) usage ;;
+    *) echo "unknown command: $1"; usage; exit 1 ;;
+esac

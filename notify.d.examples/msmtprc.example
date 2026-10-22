@@ -1,0 +1,15 @@
+# Copy to ~/.msmtprc, fill in, then: chmod 600 ~/.msmtprc
+# For Gmail, create an "app password" (needs 2-step verification). Never use your real password.
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+
+account        gmail
+host           smtp.gmail.com
+port           587
+from           YOU@gmail.com
+user           YOU@gmail.com
+password       YOUR-APP-PASSWORD
+
+account default : gmail

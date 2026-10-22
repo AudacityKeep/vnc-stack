@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Write the link into a Google Doc each time you run `vnc start` (see gdoc-apps-script.gs).
+# Setup: cp this file to ~/.config/vnc-stack/notify.d/gdoc.sh, chmod +x it, and fill in the two values.
+APPS_SCRIPT_URL="https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec"
+TOKEN="YOUR_LONG_RANDOM_TOKEN"
+URL="$1"
+curl -fsSL --get \
+    --data-urlencode "token=$TOKEN" \
+    --data-urlencode "vncurl=$URL" \
+    "$APPS_SCRIPT_URL" >/dev/null
