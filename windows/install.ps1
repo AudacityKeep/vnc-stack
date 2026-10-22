@@ -115,10 +115,13 @@ Get-NetFirewallRule -ErrorAction SilentlyContinue |
 
 # ---- 4. Optional: Virtual Display Driver ------------------------------------------
 if (-not $NoVdd) {
-    Step 'Installing the Virtual Display Driver (optional)'
-    Warn 'Windows will ask you to approve the driver. Note: this driver has been unstable on some PCs - run with -NoVdd to skip it.'
-    & winget.exe install --id VirtualDrivers.Virtual-Display-Driver -e --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) { throw 'Virtual Display Driver install failed.' }
+    Step 'Installing the Virtual Display Driver'
+    Warn 'Windows will ask you to approve the driver. Note: this driver has been unstable on some PCs ...'
+    & winget.exe list --id VirtualDrivers.Virtual-Display-Driver -e *> $null
+    if ($LASTEXITCODE -ne 0) {
+        & winget.exe install --id VirtualDrivers.Virtual-Display-Driver -e --silent --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -ne 0) { throw 'Virtual Display Driver install failed.' }
+    }
 
     $vddDir = 'C:\VirtualDisplayDriver'
     New-Item -ItemType Directory -Force $vddDir | Out-Null
