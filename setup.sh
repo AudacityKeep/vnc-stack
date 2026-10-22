@@ -9,6 +9,36 @@ CONF="$HOME/.config/vnc-stack"
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+EMAIL=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --email) EMAIL="${2:-}"; shift 2 || shift ;;
+        *) die "Unknown option: $1" ;;
+    esac
+done
+
+if [ -z "$EMAIL" ] && [ -t 0 ]; then
+    read -rp "Email address to send your access link to (Enter to skip): " EMAIL || EMAIL=""
+fi
+
+APP_PW=""
+if [ -n "$EMAIL" ]; then
+    case "$EMAIL" in
+        *@gmail.com|*@googlemail.com) ;;
+        *) echo "Only Gmail addresses are supported for now, so email will be skipped."; EMAIL="" ;;
+    esac
+fi
+if [ -n "$EMAIL" ]; then
+    if [ -t 0 ]; then
+        echo "Gmail needs an app password (Google Account > Security > 2-Step Verification > App passwords)."
+        read -rsp "App password for $EMAIL (hidden; Enter to skip email): " APP_PW || APP_PW=""; echo
+        APP_PW="${APP_PW// /}"
+        [ -n "$APP_PW" ] || EMAIL=""
+    else
+        echo "No terminal to ask for the app password, so email will be skipped."; EMAIL=""
+    fi
+fi
+
 [ "$(id -u)" -ne 0 ] || die "Run this as your normal user, not root and not with sudo."
 grep -qi microsoft /proc/version || die "This must be run inside WSL."
 [ -r /etc/os-release ] && . /etc/os-release
@@ -18,7 +48,7 @@ sudo -v || die "sudo access is required."
 
 say "Installing packages"
 sudo apt-get update
-sudo apt-get install -y nginx apache2-utils python3-websockify novnc ttyd curl ca-certificates gnupg openssl
+sudo apt-get install -y nginx apache2-utils python3-websockify novnc ttyd curl ca-certificates gnupg openssl msmtp
 [ -f /usr/share/novnc/vnc.html ] || die "noVNC's vnc.html was not found in /usr/share/novnc."
 
 if ! command -v cloudflared >/dev/null 2>&1; then
@@ -77,6 +107,29 @@ mkdir -p "$HOME/.local/bin"
 install -m 755 "$REPO_DIR/bin/vnc" "$HOME/.local/bin/vnc"
 cp -f "$REPO_DIR"/notify.d.examples/* "$CONF/notify.d.examples/"
 
+if [ -n "$EMAIL" ]; then
+    say "Setting up email notifications"
+    install -m 600 /dev/null "$HOME/.msmtprc"
+    {
+        echo "defaults"
+        echo "auth           on"
+        echo "tls            on"
+        echo "tls_trust_file /etc/ssl/certs/ca-certificates.crt"
+        echo ""
+        echo "account        gmail"
+        echo "host           smtp.gmail.com"
+        echo "port           587"
+        echo "from           $EMAIL"
+        echo "user           $EMAIL"
+        printf 'password       %s\n' "$APP_PW"
+        echo ""
+        echo "account default : gmail"
+    } > "$HOME/.msmtprc"
+    sed "s|^TO=.*|TO=\"$EMAIL\"|" "$CONF/notify.d.examples/email.sh.example" > "$CONF/notify.d/email.sh"
+    chmod +x "$CONF/notify.d/email.sh"
+    unset APP_PW
+fi
+
 say "Checking"
 sleep 2
 code() { curl -s -o /dev/null -m 5 -w '%{http_code}' "$@" || true; }
@@ -95,7 +148,14 @@ else
 fi
 
 echo
+
 if [ "$ok" = 1 ]; then
+    if [ -t 0 ]; then
+        read -rp "Set up the Google Doc link now? (y/N) " yn || yn=""
+        case "$yn" in
+            [Yy]*) "$HOME/.local/bin/vnc" setup-doc || echo "Doc setup did not finish. Run 'vnc setup-doc' later." ;;
+        esac
+    fi
     echo "Linux side is ready. Open a NEW terminal (so 'vnc' is on your PATH), then:"
     echo "    vnc start     # turns remote access on and prints the link"
     echo "    vnc creds     # shows your logins"

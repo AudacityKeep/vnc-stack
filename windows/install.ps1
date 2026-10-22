@@ -2,15 +2,16 @@
 <#
   vnc-stack, Windows side.
   Run from an elevated PowerShell:
-      powershell -ExecutionPolicy Bypass -File .\windows\install.ps1 [-WithVdd] [-Distro Ubuntu]
+      powershell -ExecutionPolicy Bypass -File .\windows\install.ps1 [-NoVdd] [-Distro Ubuntu]
 
   STATUS: untested draft. Test it on a clean machine before sharing it.
 #>
 param(
     [string]$Distro = 'Ubuntu',
-    [switch]$WithVdd,
+    [switch]$NoVdd,
     [int]$VddWidth = 1920,
-    [int]$VddHeight = 1080
+    [int]$VddHeight = 1080,
+    [string]$Email
 )
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -31,7 +32,7 @@ if ($build -lt 22621) { throw 'Windows 11 22H2 or newer is required (WSL mirrore
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
     throw "winget was not found. Install 'App Installer' from the Microsoft Store, then run this again."
 }
-
+if (-not $Email) { $Email = Read-Host 'Email address for your access link (Enter to skip)' }
 # ---- 1. WSL + Ubuntu ---------------------------------------------------------
 Step "Checking WSL and $Distro"
 $installed = @(& wsl.exe -l -q 2>$null) |
@@ -90,7 +91,8 @@ else {
         'SET_ENABLEFILETRANSFERS=1 VALUE_OF_ENABLEFILETRANSFERS=0'
     & winget.exe install --id GlavSoft.TightVNC -e --silent --accept-package-agreements --accept-source-agreements --override $msiArgs
     if ($LASTEXITCODE -ne 0) { throw 'TightVNC install failed.' }
-    Start-Sleep -Seconds 3
+$setupArgs = @()
+if ($Email) { $setupArgs += '--email'; $setupArgs += $Email }    Start-Sleep -Seconds 3
 }
 
 # Make sure the important settings really are set, whatever the installer did.
@@ -112,9 +114,9 @@ Get-NetFirewallRule -ErrorAction SilentlyContinue |
     Remove-NetFirewallRule
 
 # ---- 4. Optional: Virtual Display Driver ------------------------------------------
-if ($WithVdd) {
+if (-not $NoVdd) {
     Step 'Installing the Virtual Display Driver (optional)'
-    Warn 'Windows will ask you to approve the driver. Note: this driver has been unstable on some PCs (especially with two GPUs).'
+    Warn 'Windows will ask you to approve the driver. Note: this driver has been unstable on some PCs - run with -NoVdd to skip it.'
     & winget.exe install --id VirtualDrivers.Virtual-Display-Driver -e --silent --accept-package-agreements --accept-source-agreements
     if ($LASTEXITCODE -ne 0) { throw 'Virtual Display Driver install failed.' }
 
@@ -148,6 +150,9 @@ Start-Process wscript.exe -ArgumentList "`"$vbs`""
 Step "Running the Linux-side setup inside $Distro"
 $repoPosix = $RepoRoot.Replace('\', '/')
 $repoWsl = (& wsl.exe -d $Distro --exec wslpath -a $repoPosix).Trim()
+$setupArgs = @()
+if ($Email) { $setupArgs += '--email'; $setupArgs += $Email }
+
 & wsl.exe -d $Distro --exec bash "$repoWsl/setup.sh"
 if ($LASTEXITCODE -ne 0) { throw 'The Linux-side setup failed. Fix the error above and run this again.' }
 

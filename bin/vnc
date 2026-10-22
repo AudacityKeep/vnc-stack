@@ -132,6 +132,48 @@ cmd_passwd() {
     echo "New web password set. Show it with: vnc creds"
 }
 
+cmd_setup_doc() {
+    local tmpl="$CONF/notify.d.examples" token url resp
+    [ -f "$tmpl/gdoc-apps-script.gs" ] || { echo "Missing $tmpl/gdoc-apps-script.gs. Re-run setup.sh."; return 1; }
+    token=$(openssl rand -hex 16)
+    cat <<MSG
+
+Google Doc link setup
+ 1. Open Google Docs and create a new blank document.
+ 2. Extensions > Apps Script. Delete everything in the editor and paste the script printed below.
+ 3. Deploy > New deployment > type "Web app". Execute as: Me. Who has access: Anyone. Click Deploy.
+    Google will ask you to authorize it. If it says the app is unverified, click Advanced, then
+    "Go to ... (unsafe)". It is your own script, running on your own Doc.
+ 4. Copy the Web app URL (it ends in /exec) and paste it at the prompt.
+
+----- copy from here -----
+MSG
+    sed "s/PUT_A_LONG_RANDOM_TOKEN_HERE/$token/" "$tmpl/gdoc-apps-script.gs"
+    echo "----- to here -----"
+    echo
+    read -rp "Web app URL (Enter to cancel): " url || return 1
+    [ -n "$url" ] || { echo "Cancelled."; return 1; }
+    case "$url" in
+        https://script.google.com/macros/s/*/exec) ;;
+        *) echo "That doesn't look like a Web app URL ending in /exec."; return 1 ;;
+    esac
+
+    resp=$(curl -fsSL --get --data-urlencode "token=$token" \
+        --data-urlencode "vncurl=https://example.com/test" "$url") || resp="(request failed)"
+    if [ "$resp" != "Updated" ]; then
+        echo "The test did not work (got: $resp)."
+        echo "Check that 'Who has access' is set to Anyone and that you pasted the script with the token."
+        return 1
+    fi
+
+    install -m 700 /dev/null "$CONF/notify.d/gdoc.sh"
+    cat >"$CONF/notify.d/gdoc.sh" <<HOOK
+#!/usr/bin/env bash
+curl -fsSL --get --data-urlencode "token=$token" --data-urlencode "vncurl=\$1" "$url" >/dev/null
+HOOK
+    echo "Done. Your Doc now shows a test link, and 'vnc start' will update it each time."
+}
+
 usage() {
     cat <<USAGE
 usage: vnc <command>
@@ -142,6 +184,7 @@ usage: vnc <command>
   url       print the current link
   creds     show your logins
   passwd    generate a new web password
+  setup-doc generate a token and connect a Google Doc
 USAGE
 }
 
@@ -152,6 +195,7 @@ case "${1:-}" in
     url)     cmd_url ;;
     creds)   cmd_creds ;;
     passwd)  cmd_passwd ;;
+    setup-doc) cmd_setup_doc ;;
     ""|-h|--help|help) usage ;;
     *) echo "unknown command: $1"; usage; exit 1 ;;
 esac

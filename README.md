@@ -44,7 +44,7 @@ This gives anyone who gets your link **and** your logins full control of your PC
 4. The script installs TightVNC, writes `.wslconfig` (mirrored networking), sets up a keep-alive, then runs `setup.sh` inside Ubuntu. At the end it prints your logins.
 5. Run `wsl --shutdown` once if it asks, so networking changes take effect.
 
-Optional: add `-WithVdd` to install the Virtual Display Driver (a fake monitor, useful for headless PCs). It has been unstable on some machines, especially with two GPUs, so it is off by default.
+Optional: add `-NoVdd` to not install the Virtual Display Driver (a fake monitor, useful for headless PCs). It has been unstable on some machines, but is on by default.
 
 Linux side only: inside Ubuntu, `bash setup.sh`.
 
@@ -74,6 +74,10 @@ The link changes every time. To have it sent to you, copy an example from `~/.co
 
 Your school or work mail may strip trycloudflare.com links.
 
+### Google Doc link (optional)
+
+If you skipped it during setup, run `vnc setup-doc` in Ubuntu. It walks you through creating a Google Doc, pasting a small script into it, deploying it as a web app, and connecting it. After that, `vnc start` writes the new link into your Doc each time, so you can open the Doc on your phone to get the link. Everything runs in your own Google account, and nothing is shared with anyone else.
+
 ## Uninstall (manual)
 
 1. `vnc stop`
@@ -88,4 +92,4 @@ Your school or work mail may strip trycloudflare.com links.
 
 ## License
 
-MIT. See `LICENSE` (put your name in it first).
+MIT. See `LICENSE`.

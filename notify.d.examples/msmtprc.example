@@ -6,7 +6,7 @@ tls            on
 tls_trust_file /etc/ssl/certs/ca-certificates.crt
 
 account        gmail
-host           smtp.gmail.com
+host           msmtp.gmail.com
 port           587
 from           YOU@gmail.com
 user           YOU@gmail.com
