@@ -75,8 +75,18 @@ elseif ((Get-Content $cfg -Raw) -notmatch 'networkingMode\s*=\s*mirrored') {
 # ---- 3. TightVNC ---------------------------------------------------------------
 Step 'Setting up TightVNC'
 $vncPass = $null
-if (Get-Service tvnserver -ErrorAction SilentlyContinue) {
-    Warn 'TightVNC is already installed. Keeping its password; applying the safe settings only.'
+$marker = 'C:\ProgramData\vnc-stack\tightvnc-installed-by-vnc-stack'
+$haveVnc = [bool](Get-Service tvnserver -ErrorAction SilentlyContinue)
+if ($haveVnc -and (Test-Path $marker)) {
+    Step 'Removing the earlier TightVNC install so a fresh password can be set'
+    Stop-Service tvnserver -ErrorAction SilentlyContinue
+    & winget.exe uninstall --id GlavSoft.TightVNC -e --silent
+    if ($LASTEXITCODE -ne 0) { throw 'Could not remove the old TightVNC. Uninstall it in Settings > Apps, then run this again.' }
+    Start-Sleep -Seconds 3
+    $haveVnc = $false
+}
+if ($haveVnc) {
+    Warn 'TightVNC is already installed and was not set up by this installer. Keeping its password; applying the safe settings only.'
 }
 else {
     & winget.exe show --id GlavSoft.TightVNC -e --accept-source-agreements *> $null
@@ -91,6 +101,9 @@ else {
         'SET_ENABLEFILETRANSFERS=1 VALUE_OF_ENABLEFILETRANSFERS=0'
     & winget.exe install --id GlavSoft.TightVNC -e --silent --accept-package-agreements --accept-source-agreements --override $msiArgs
     if ($LASTEXITCODE -ne 0) { throw 'TightVNC install failed.' }
+    New-Item -ItemType Directory -Force 'C:\ProgramData\vnc-stack' | Out-Null
+    Set-Content -Path $marker -Value 'installed by vnc-stack'
+    Start-Sleep -Seconds 3
 $setupArgs = @()
 if ($Email) { $setupArgs += '--email'; $setupArgs += $Email }    Start-Sleep -Seconds 3
 }
