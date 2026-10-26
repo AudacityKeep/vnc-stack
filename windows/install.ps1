@@ -24,7 +24,16 @@ function New-RandomString([int]$Length) {
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
     -join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] })
 }
+# ---- Negative 1. Confirmation prompts:
 
+$answer = (Read-Host "This will change this PC. Continue? (Y/N)").Trim().ToUpper()
+
+if ($answer -ne "Y") {
+    Write-Host "Installation cancelled."
+    exit 1
+}
+
+# Rest of install.ps1 starts here
 # ---- 0. Checks ---------------------------------------------------------------
 Step 'Checking this PC'
 $build = [int](Get-CimInstance Win32_OperatingSystem).BuildNumber
@@ -123,7 +132,7 @@ else {
 }
 # Remove TightVNC's default inbound allow rule (not needed for loopback).
 Get-NetFirewallRule -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -like 'TightVNC*' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' } |
+    Where-Object { $_.DisplayName -like 'T ghtVNC*' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' } |
     Remove-NetFirewallRule
 
 # ---- 4. Optional: Virtual Display Driver ------------------------------------------
@@ -167,9 +176,10 @@ Step "Running the Linux-side setup inside $Distro"
 $repoPosix = $RepoRoot.Replace('\', '/')
 $repoWsl = (& wsl.exe -d $Distro --exec wslpath -a $repoPosix).Trim()
 $setupArgs = @()
-if ($Email) { $setupArgs += '--email'; $setupArgs += $Email }
+    if ($Email) { $setupArgs += '--email'; $setupArgs += $Email }
+    else { $setupArgs += '--skip-email' }
 
-& wsl.exe -d $Distro --exec bash "$repoWsl/setup.sh"
+& wsl.exe -d $Distro --exec bash "$repoWsl/setup.sh" @setupArgs
 if ($LASTEXITCODE -ne 0) { throw 'The Linux-side setup failed. Fix the error above and run this again.' }
 
 if ($vncPass) {
