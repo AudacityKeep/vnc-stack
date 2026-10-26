@@ -8,7 +8,14 @@ NOVNC_DIR="/usr/share/novnc"
 mkdir -p "$STATE" "$CONF/notify.d"
 
 running()  { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
-vnc_open() { (exec 3<>/dev/tcp/127.0.0.1/5900) 2>/dev/null; }
+vnc_host() {
+    if grep -qs '^VNC_HOST_MODE=gateway' "$CONF/config"; then
+        ip route show default | awk '{print $3; exit}'
+    else
+        echo 127.0.0.1
+    fi
+}
+vnc_open() { (exec 3<>"/dev/tcp/$(vnc_host)/5900") 2>/dev/null; }
 tunnel_url() {
     grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' "$STATE/cloudflared.log" 2>/dev/null \
         | grep -v '^https://api\.' | head -1
@@ -32,13 +39,18 @@ cmd_start() {
 
     if ! vnc_open; then
         echo "WARNING: nothing is listening on 127.0.0.1:5900 (TightVNC)."
-        echo "         Check that TightVNC is running on Windows and that .wslconfig has"
-        echo "         networkingMode=mirrored (then run 'wsl --shutdown' from Windows)."
+         if grep -qs '^VNC_HOST_MODE=gateway' "$CONF/config"; then
+            echo "         Check that TightVNC is running and that the firewall rule"
+            echo "         'vnc-stack TightVNC from WSL only' exists and is enabled."
+        else
+            echo "         Check that TightVNC is running and that .wslconfig has"
+            echo "         networkingMode=mirrored (then run 'wsl --shutdown' from Windows)."
+        fi
     fi
 
     if ! running "$STATE/websockify.pid"; then
         echo "Starting websockify..."
-        nohup websockify --web "$NOVNC_DIR" 127.0.0.1:6080 127.0.0.1:5900 \
+        nohup websockify --web "$NOVNC_DIR" 127.0.0.1:6080 "$(vnc_host):5900" \
             >"$STATE/websockify.log" 2>&1 &
         echo $! >"$STATE/websockify.pid"
     fi

@@ -33,6 +33,16 @@ This gives anyone who gets your link **and** your logins full control of your PC
 - winget
 - An internet connection
 
+### Windows 10
+
+`install.ps1` asks which Windows you have. Windows 10 needs version 2004 (build 19041) or newer.
+
+Windows 10 can't use mirrored networking, so TightVNC listens beyond loopback and a Windows Firewall rule limits it to connections from WSL. **Windows Firewall must stay on.** The installer refuses to run if it's off.
+
+Windows 10 support has ended for most people, so it may not get security updates. Only run this on a PC you can keep patched.
+
+Windows 10 support is experimental. The display driver is off unless you pass `-WithVdd`.
+
 ## Install
 
 1. Clone or download this repo (keep line endings as they are, see `.gitattributes`).

@@ -1,0 +1,202 @@
+#Requires -RunAsAdministrator
+<#
+  vnc-stack, Windows side.
+  Run from an elevated PowerShell:
+      powershell -ExecutionPolicy Bypass -File .\windows\install.ps1 [-WithVdd] [-Distro Ubuntu]
+
+  STATUS: untested draft. Test it on a clean machine before sharing it.
+#>
+param(
+    [string]$Distro = 'Ubuntu',
+    [switch]$WithVdd,
+    [int]$VddWidth = 1920,
+    [int]$VddHeight = 1080,
+    [string]$Email
+)
+$ErrorActionPreference = 'Stop'
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+
+function Step($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
+function Warn($m) { Write-Host "WARNING: $m" -ForegroundColor Yellow }
+function New-RandomString([int]$Length) {
+    $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+    $bytes = New-Object byte[] $Length
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    -join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] })
+}
+# ---- Negative 1. Confirmation prompts:
+
+$answer = (Read-Host "This will change this PC. Continue? (Y/N)").Trim().ToUpper()
+
+if ($answer -ne "Y") {
+    Write-Host "Installation cancelled."
+    exit 1
+}
+
+# Rest of install.ps1 starts here
+# ---- 0. Checks ---------------------------------------------------------------
+Step 'Checking this PC'
+$build = [int](Get-CimInstance Win32_OperatingSystem).BuildNumber
+if ($build -lt 19041) { throw 'Windows 10 version 2004 (build 19041) or newer is required for WSL 2.' }
+if ($build -ge 22000) { throw 'This is Windows 11. Run win11.ps1 (or install.ps1 and choose 11) instead.' }
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    throw "winget was not found. Install 'App Installer' from the Microsoft Store, then run this again."
+}
+if (-not $Email) { $Email = Read-Host 'Email address for your access link (Enter to skip)' }
+# ---- 1. WSL + Ubuntu ---------------------------------------------------------
+Step "Checking WSL and $Distro"
+$installed = @(& wsl.exe -l -q 2>$null) |
+    ForEach-Object { ($_ -replace "`0", '').Trim() } |
+    Where-Object { $_ }
+if ($installed -notcontains $Distro) {
+    Step "Installing WSL and $Distro (a restart may be needed)"
+    & wsl.exe --install -d $Distro --no-launch
+        if ($LASTEXITCODE -ne 0) {
+        throw "WSL could not be installed automatically. Update Windows, then follow Microsoft's manual WSL 2 steps at https://learn.microsoft.com/windows/wsl/install-manual and run this again."
+    }
+    Write-Host "`nNext: restart Windows if asked, open '$Distro' from the Start menu once to create your Linux user, then run this script again." -ForegroundColor Green
+    exit 0
+}
+& wsl.exe --update
+$linuxUser = (& wsl.exe -d $Distro --exec whoami).Trim()
+if ($linuxUser -eq 'root') {
+    throw "Open '$Distro' from the Start menu once and create a normal Linux user first, then run this again."
+}
+
+# ---- 2. .wslconfig (mirrored networking isn't available on win10) ---
+Step 'Checking .wslconfig'
+$cfg = Join-Path $env:USERPROFILE '.wslconfig'
+$memGB = [math]::Max(4, [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB / 2))
+$needShutdown = $false
+if (-not (Test-Path $cfg)) {
+    @"
+[wsl2]
+memory=${memGB}GB
+
+"@ | Set-Content -Path $cfg -Encoding ASCII
+    $needShutdown = $true
+    Write-Host "Created $cfg"
+}
+
+# ---- 3. TightVNC ---------------------------------------------------------------
+Step 'Setting up TightVNC'
+$fwOff = Get-NetFirewallProfile | Where-Object { $_.Enabled -ne 'True' }
+if ($fwOff) {
+    throw "Windows Firewall is off for: $($fwOff.Name -join ', '). Turn it on first, because on Windows 10 it is what keeps TightVNC private."
+}
+$wslNic = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'vEthernet (WSL*' } | Select-Object -First 1
+if (-not $wslNic) { throw 'The WSL network adapter was not found. Open Ubuntu once, then run this again.' }
+$vncPass = $null
+$marker = 'C:\ProgramData\vnc-stack\tightvnc-installed-by-vnc-stack'
+$haveVnc = [bool](Get-Service tvnserver -ErrorAction SilentlyContinue)
+if ($haveVnc -and (Test-Path $marker)) {
+    Step 'Removing the earlier TightVNC install so a fresh password can be set'
+    Stop-Service tvnserver -ErrorAction SilentlyContinue
+    & winget.exe uninstall --id GlavSoft.TightVNC -e --silent
+    if ($LASTEXITCODE -ne 0) { throw 'Could not remove the old TightVNC. Uninstall it in Settings > Apps, then run this again.' }
+    Start-Sleep -Seconds 3
+    $haveVnc = $false
+}
+if ($haveVnc) {
+    Warn 'TightVNC is already installed and was not set up by this installer. Keeping its password; applying the safe settings only.'
+}
+else {
+    & winget.exe show --id GlavSoft.TightVNC -e --accept-source-agreements *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'winget could not find GlavSoft.TightVNC. Install TightVNC (Server only, as a service) from tightvnc.com, then run this again.'
+    }
+    $vncPass = New-RandomString 8
+    $msiArgs = '/quiet /norestart ADDLOCAL=Server SERVER_REGISTER_AS_SERVICE=1 SERVER_ADD_FIREWALL_EXCEPTION=0 ' +
+        'SET_USEVNCAUTHENTICATION=1 VALUE_OF_USEVNCAUTHENTICATION=1 SET_PASSWORD=1 VALUE_OF_PASSWORD=' + $vncPass + ' ' +
+        'SET_ALLOWLOOPBACK=1 VALUE_OF_ALLOWLOOPBACK=1 SET_LOOPBACKONLY=1 VALUE_OF_LOOPBACKONLY=0 ' +
+        'SET_ACCEPTHTTPCONNECTIONS=1 VALUE_OF_ACCEPTHTTPCONNECTIONS=0 ' +
+        'SET_ENABLEFILETRANSFERS=1 VALUE_OF_ENABLEFILETRANSFERS=0'
+    & winget.exe install --id GlavSoft.TightVNC -e --silent --accept-package-agreements --accept-source-agreements --override $msiArgs
+    if ($LASTEXITCODE -ne 0) { throw 'TightVNC install failed.' }
+    New-Item -ItemType Directory -Force 'C:\ProgramData\vnc-stack' | Out-Null
+    Set-Content -Path $marker -Value 'installed by vnc-stack'
+    Start-Sleep -Seconds 3
+& wsl.exe -d $Distro --exec bash -c 'umask 077; mkdir -p ~/.config/vnc-stack; echo VNC_HOST_MODE=gateway > ~/.config/vnc-stack/config'
+$setupArgs = @()
+if ($Email) { $setupArgs += '--email'; $setupArgs += $Email }    Start-Sleep -Seconds 3
+}
+
+# Make sure the important settings really are set, whatever the installer did.
+$key = 'HKLM:\SOFTWARE\TightVNC\Server'
+if (Test-Path $key) {
+    Set-ItemProperty $key -Name LoopbackOnly -Value 0 -Type DWord
+    Set-ItemProperty $key -Name AllowLoopback -Value 1 -Type DWord
+    Set-ItemProperty $key -Name UseVncAuthentication -Value 1 -Type DWord
+    Set-ItemProperty $key -Name AcceptHttpConnections -Value 0 -Type DWord
+    Set-ItemProperty $key -Name EnableFileTransfers -Value 0 -Type DWord
+    Restart-Service tvnserver
+}
+else {
+    Warn 'TightVNC settings were not found in the registry. In TightVNC Server > Configuration, enable "Allow loopback connections" and "Only loopback", and disable the web viewer and file transfers.'
+}
+# Remove TightVNC's default inbound allow rule (not needed for loopback).
+Get-NetFirewallRule -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName -like 'T ghtVNC*' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' } |
+    Remove-NetFirewallRule
+Get-NetFirewallRule -DisplayName 'vnc-stack TightVNC from WSL only' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -DisplayName 'vnc-stack TightVNC from WSL only' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5900 -InterfaceAlias $wslNic.Name | Out-Null
+# ---- 4. Optional: Virtual Display Driver ------------------------------------------
+if (-not $WithVdd) {
+    Step 'Installing the Virtual Display Driver'
+    Warn 'Windows will ask you to approve the driver. Note: this driver has been unstable on some PCs ...'
+    & winget.exe list --id VirtualDrivers.Virtual-Display-Driver -e *> $null
+    if ($LASTEXITCODE -ne 0) {
+        & winget.exe install --id VirtualDrivers.Virtual-Display-Driver -e --silent --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -ne 0) { throw 'Virtual Display Driver install failed.' }
+    }
+
+    $vddDir = 'C:\VirtualDisplayDriver'
+    New-Item -ItemType Directory -Force $vddDir | Out-Null
+    $xml = Get-Content (Join-Path $PSScriptRoot 'vdd_settings.xml') -Raw
+    $xml = $xml.Replace('{{WIDTH}}', "$VddWidth").Replace('{{HEIGHT}}', "$VddHeight")
+    Set-Content -Path (Join-Path $vddDir 'vdd_settings.xml') -Value $xml -Encoding UTF8
+
+    $dir = 'C:\ProgramData\vnc-stack'
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    Copy-Item (Join-Path $PSScriptRoot 'restart-vdd.ps1') $dir -Force
+    # Only admins may change the script, because the task below runs it as SYSTEM.
+    & icacls.exe $dir /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' 'Users:(OI)(CI)RX' | Out-Null
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$dir\restart-vdd.ps1`""
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+    Register-ScheduledTask -TaskName 'Restart-VDD' -Action $action -Principal $principal -Force | Out-Null
+}
+
+# ---- 5. Keep WSL running ------------------------------------------------------------
+Step 'Setting up the WSL keep-alive'
+$vbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'wsl-keepalive.vbs'
+@"
+Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run "wsl.exe -d $Distro -e sleep infinity", 0, False
+"@ | Set-Content -Path $vbs -Encoding ASCII
+Start-Process wscript.exe -ArgumentList "`"$vbs`""
+
+# ---- 6. Linux side ---------------------------------------------------------------
+Step "Running the Linux-side setup inside $Distro"
+$repoPosix = $RepoRoot.Replace('\', '/')
+$repoWsl = (& wsl.exe -d $Distro --exec wslpath -a $repoPosix).Trim()
+$setupArgs = @()
+    if ($Email) { $setupArgs += '--email'; $setupArgs += $Email }
+    else { $setupArgs += '--skip-email' }
+
+& wsl.exe -d $Distro --exec bash "$repoWsl/setup.sh" @setupArgs
+if ($LASTEXITCODE -ne 0) { throw 'The Linux-side setup failed. Fix the error above and run this again.' }
+
+if ($vncPass) {
+    $vncPass | & wsl.exe -d $Distro --exec bash -c 'umask 077; mkdir -p ~/.config/vnc-stack; tr -d "\r\n" > ~/.config/vnc-stack/vnc_pass'
+}
+
+# ---- 7. Finish ----------------------------------------------------------------------
+Step 'Done'
+& wsl.exe -d $Distro --exec bash -lc 'vnc creds'
+Write-Host "`nOpen $Distro and run:  vnc start" -ForegroundColor Green
+Write-Host 'Keep these logins private. Run "vnc stop" whenever you are not using remote access.'
+if ($needShutdown) {
+    Warn 'A WSL restart is needed once so the memory limit takes effect (this stops anything running in WSL).'
+    if ((Read-Host 'Run "wsl --shutdown" now? (y/N)') -eq 'y') { & wsl.exe --shutdown }
+}

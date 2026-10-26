@@ -145,11 +145,12 @@ chk() {
 chk "web login is required"  "$(code http://127.0.0.1:8080/)" 401
 chk "landing page loads"     "$(code -u "$WEB_USER:$WEB_PASS" http://127.0.0.1:8080/)" 200
 chk "terminal (ttyd) loads"  "$(code -u "$WEB_USER:$WEB_PASS" http://127.0.0.1:8080/ttyd/)" 200
-if (exec 3<>/dev/tcp/127.0.0.1/5900) 2>/dev/null; then
-    echo "  ok    TightVNC is reachable on 127.0.0.1:5900"
+VNC_HOST=127.0.0.1
+grep -qs '^VNC_HOST_MODE=gateway' "$CONF/config" && VNC_HOST=$(ip route show default | awk '{print $3; exit}')
+if (exec 3<>"/dev/tcp/$VNC_HOST/5900") 2>/dev/null; then
+    echo "  ok    TightVNC is reachable on $VNC_HOST:5900"
 else
-    echo "  note  TightVNC is not reachable on 127.0.0.1:5900 yet."
-    echo "        Install the Windows side, then run 'wsl --shutdown' in Windows once."
+    echo "  note  TightVNC is not reachable on $VNC_HOST:5900 yet."
 fi
 
 echo
