@@ -51,7 +51,7 @@ sudo -v || die "sudo access is required."
 
 say "Installing packages"
 sudo apt-get update
-sudo apt-get install -y nginx apache2-utils python3-websockify novnc ttyd curl ca-certificates gnupg openssl msmtp
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nginx apache2-utils python3-websockify novnc ttyd curl ca-certificates gnupg openssl msmtp
 [ -f /usr/share/novnc/vnc.html ] || die "noVNC's vnc.html was not found in /usr/share/novnc."
 
 if ! command -v cloudflared >/dev/null 2>&1; then
@@ -61,7 +61,7 @@ if ! command -v cloudflared >/dev/null 2>&1; then
     echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' \
         | sudo tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
     sudo apt-get update
-    sudo apt-get install -y cloudflared
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y cloudflared
 fi
 
 say "Creating logins"
