@@ -113,8 +113,6 @@ else {
     New-Item -ItemType Directory -Force 'C:\ProgramData\vnc-stack' | Out-Null
     Set-Content -Path $marker -Value 'installed by vnc-stack'
     Start-Sleep -Seconds 3
-$setupArgs = @()
-if ($Email) { $setupArgs += '--email'; $setupArgs += $Email }    Start-Sleep -Seconds 3
 }
 
 # Make sure the important settings really are set, whatever the installer did.
@@ -132,7 +130,7 @@ else {
 }
 # Remove TightVNC's default inbound allow rule (not needed for loopback).
 Get-NetFirewallRule -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -like 'T ghtVNC*' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' } |
+    Where-Object { $_.DisplayName -like 'TightVNC*' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' } |
     Remove-NetFirewallRule
 
 # ---- 4. Optional: Virtual Display Driver ------------------------------------------
@@ -187,6 +185,8 @@ if ($vncPass) {
 }
 
 # ---- 7. Finish ----------------------------------------------------------------------
+# Stop logging here so the credentials printed below never reach the log file.
+try { Stop-Transcript | Out-Null } catch { }
 Step 'Done'
 & wsl.exe -d $Distro --exec bash -lc 'vnc creds'
 Write-Host "`nOpen $Distro and run:  vnc start" -ForegroundColor Green

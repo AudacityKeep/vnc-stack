@@ -10,19 +10,17 @@ say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 EMAIL=""
+SKIP_EMAIL=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --email) EMAIL="${2:-}"; shift 2 || shift ;;
+        --skip-email) SKIP_EMAIL=1; shift ;;
         *) die "Unknown option: $1" ;;
     esac
 done
 
-if [ -z "$EMAIL" ] && [ -t 0 ]; then
-    read -rp "Email address to send your access link to (Enter to skip): " EMAIL || EMAIL=""
-fi
-
-if [ -z "$EMAIL" ] && [ -t 0 ]; then
+if [ -z "$EMAIL" ] && [ "$SKIP_EMAIL" = 0 ] && [ -t 0 ]; then
     read -rp "Email address to send your access link to (Enter to skip): " EMAIL || EMAIL=""
 fi
 

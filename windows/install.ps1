@@ -21,4 +21,7 @@ if ($choice -ne $detected) {
     Write-Host "This PC looks like Windows $detected (build $build), but you chose $choice." -ForegroundColor Yellow
     if ((Read-Host 'Continue anyway? (y/N)') -ne 'y') { exit 1 }
 }
-& $script @args
+$log = Join-Path $env:USERPROFILE 'vnc-stack-install.log'
+Start-Transcript -Path $log -Append | Out-Null
+try { & $script @args }
+finally { try { Stop-Transcript | Out-Null } catch { } }
