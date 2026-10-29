@@ -7,7 +7,8 @@
   This turns remote access off. Do not run it on a PC you are using for remote access right now.
 #>
 param(
-    [string]$Distro = 'Ubuntu'
+    [string]$Distro = 'Ubuntu',
+    [switch]$Yes
 )
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -15,10 +16,12 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 function Step($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 function Warn($m) { Write-Host "WARNING: $m" -ForegroundColor Yellow }
 
-$answer = (Read-Host 'This will remove vnc-stack from this PC. Continue? (Y/N)').Trim().ToUpper()
-if ($answer -ne 'Y') {
-    Write-Host 'Uninstall cancelled.'
-    exit 1
+if (-not $Yes) {
+    $answer = (Read-Host 'This will remove vnc-stack from this PC. Continue? (Y/N)').Trim().ToUpper()
+    if ($answer -ne 'Y') {
+        Write-Host 'Uninstall cancelled.'
+        exit 1
+    }
 }
 
 # ---- 1. Linux side (runs uninstall.sh from the repo root, if it exists) ------------
