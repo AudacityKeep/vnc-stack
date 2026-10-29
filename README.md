@@ -4,6 +4,15 @@ Reach your Windows PC's desktop and a terminal from any browser, through a free 
 
 **Status: early and partly untested.** The Linux side was tested with stand-in services only. The Windows installer (`windows/install.ps1`) has never been run on a clean PC. Read the whole README before using it, and expect to fix things.
 
+## Acceptable use
+
+vnc-stack gives you remote access to a computer through a web browser. You are responsible for using it within the rules that apply to you.
+
+- Only install it on computers you own or have permission to set up this way.
+- Many schools, employers and networks ban remote-access tools, tunnels and proxies on their devices or networks, and some ban reaching your own computer from their network. Breaking those rules can lead to suspension, dismissal or worse. Read the acceptable-use policy that applies to you, and if you are unsure, ask the person who runs the network or device first.
+- Anyone with your link and logins controls your PC. Keep them private and run `vnc stop` when you are done.
+- This software is provided as is, with no warranty (see LICENSE). The author is not responsible for how you use it. This is not legal advice.
+
 ## Read this first: what you are opening
 
 This gives anyone who gets your link **and** your logins full control of your PC. Treat it like handing over your keyboard.

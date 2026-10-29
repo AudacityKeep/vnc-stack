@@ -5,7 +5,7 @@
 ; that runs windows\win10.ps1 or windows\win11.ps1 (picked from the Windows build).
 
 #define AppName "vnc-stack"
-#define AppVersion "0.4"
+#define AppVersion "0.4.1"
 #define AppPublisher "Audacity Keep"
 
 [Setup]
@@ -56,10 +56,39 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 
 [Code]
 var
+  NoticePage: TWizardPage;
+  NoticeText: TNewStaticText;
+  NoticeCheck: TNewCheckBox;
   EmailPage: TInputQueryWizardPage;
 
 procedure InitializeWizard();
 begin
+  NoticePage := CreateCustomPage(wpLicense, 'Acceptable use',
+    'Please read this before you install');
+
+  NoticeText := TNewStaticText.Create(NoticePage);
+  NoticeText.Parent := NoticePage.Surface;
+  NoticeText.Left := 0;
+  NoticeText.Top := 0;
+  NoticeText.Width := NoticePage.SurfaceWidth;
+  NoticeText.Height := NoticePage.SurfaceHeight - ScaleY(36);
+  NoticeText.AutoSize := False;
+  NoticeText.WordWrap := True;
+  NoticeText.Caption :=
+    'vnc-stack gives you remote access to a computer through a web browser. You are responsible for using it within the rules that apply to you.' + #13#10 + #13#10 +
+    '- Only install it on computers you own or have permission to set up this way.' + #13#10 +
+    '- Many schools, employers and networks ban remote-access tools, tunnels and proxies on their devices or networks, and some ban reaching your own computer from their network. Breaking those rules can lead to suspension, dismissal or worse. Read the acceptable-use policy that applies to you, and if you are unsure, ask the person who runs the network or device first.' + #13#10 +
+    '- Anyone with your link and logins controls your PC. Keep them private and run "vnc stop" when you are done.' + #13#10 +
+    '- This software is provided as is, with no warranty. The author is not responsible for how you use it. This is not legal advice.';
+
+  NoticeCheck := TNewCheckBox.Create(NoticePage);
+  NoticeCheck.Parent := NoticePage.Surface;
+  NoticeCheck.Left := 0;
+  NoticeCheck.Top := NoticePage.SurfaceHeight - ScaleY(20);
+  NoticeCheck.Width := NoticePage.SurfaceWidth;
+  NoticeCheck.Height := ScaleY(20);
+  NoticeCheck.Caption := 'I understand and accept responsibility for how I use this';
+
   EmailPage := CreateInputQueryPage(wpSelectTasks,
     'Access link email',
     'Optional: get the remote-access link by email',
@@ -88,6 +117,14 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
+  if CurPageID = NoticePage.ID then
+  begin
+    if not NoticeCheck.Checked then
+    begin
+      MsgBox('Please tick the box to confirm you understand, or click Cancel.', mbInformation, MB_OK);
+      Result := False;
+    end;
+  end;
   if CurPageID = EmailPage.ID then
   begin
     if not EmailLooksValid(Trim(EmailPage.Values[0])) then
