@@ -43,7 +43,16 @@ Windows 10 support has ended for most people, so it may not get security updates
 
 Windows 10 support is experimental. The display driver is off unless you pass `-WithVdd`.
 
-## Install
+## Install via installer
+
+1. Download attached installer and run
+3. If WSL needs installing, the installer stops and asks you to restart. Open Ubuntu once from the Start menu to create your Linux user, then run the script again.
+4. The script installs TightVNC, writes `.wslconfig` (mirrored networking/writing settings), sets up a keep-alive, then runs `setup.sh` inside Ubuntu. At the end it prints your logins.
+5. Run `wsl --shutdown` once if it asks, so networking changes take effect.
+
+Optional: check the `No Vdd` box to not install the Virtual Display Driver (a fake monitor, useful for headless PCs). It has been unstable on some machines, but is on by default.
+
+## Install via code
 
 1. Clone or download this repo (keep line endings as they are, see `.gitattributes`).
 2. Open PowerShell **as administrator** in the repo folder and run:
